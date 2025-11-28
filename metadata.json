@@ -1,0 +1,7 @@
+{
+  "name": "Copy of PC 3",
+  "description": "Sistema completo para gestão de contratos, pacientes, RH e financeiro de empresas de Home Care.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}
