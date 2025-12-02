@@ -99,7 +99,7 @@ const initialTimeRecords: TimeRecord[] = [
 
 const App: React.FC = () => {
   const [currentView, setCurrentView] = useState('dashboard');
-  const [isDarkMode, setIsDarkMode] = useState(true); // Default to Dark Mode for Neon Theme
+  const [isDarkMode, setIsDarkMode] = useState(true); // Default Dark Mode for Neon
   
   // Centralized State
   const [patients, setPatients] = useState<Patient[]>(initialPatients);
@@ -109,11 +109,6 @@ const App: React.FC = () => {
   const [monitorings, setMonitorings] = useState<MonthlyMonitoring[]>(initialMonitoring);
   const [shifts, setShifts] = useState<Shift[]>(initialShifts);
   const [timeRecords, setTimeRecords] = useState<TimeRecord[]>(initialTimeRecords);
-
-  useEffect(() => {
-    // Force dark mode class
-    document.documentElement.classList.add('dark');
-  }, []);
 
   const toggleTheme = () => setIsDarkMode(!isDarkMode);
 
@@ -148,16 +143,11 @@ const App: React.FC = () => {
   };
 
   const handleDeleteEmployee = (employeeId: string) => {
-    // Remove employee
     setEmployees(employees.filter(e => e.id !== employeeId));
-    
-    // Remove links from patients
     setPatients(patients.map(p => ({
         ...p,
         linkedEmployees: p.linkedEmployees?.filter(link => link.employeeId !== employeeId)
     })));
-
-    // Remove future shifts for this employee
     setShifts(shifts.filter(s => s.employeeId !== employeeId));
   };
 
@@ -207,7 +197,6 @@ const App: React.FC = () => {
     setShifts(shifts.filter(s => s.id !== id));
   };
 
-  // Time Card Handlers
   const handleCheckIn = (employeeId: string, location: { lat: number; lng: number }) => {
      const newRecord: TimeRecord = {
          id: Math.random().toString(36).substr(2, 9),
@@ -237,7 +226,12 @@ const App: React.FC = () => {
   const renderContent = () => {
     switch (currentView) {
       case 'dashboard':
-        return <Dashboard patients={patients} contracts={contracts} finance={financeRecords} />;
+        return <Dashboard 
+                  patients={patients} 
+                  contracts={contracts} 
+                  finance={financeRecords} 
+                  onAddFinanceRecord={handleAddFinanceRecord}
+                />;
       case 'patients':
         return <PatientsView 
                   patients={patients} 
@@ -292,17 +286,22 @@ const App: React.FC = () => {
                   onUpdateMonitoring={handleUpdateMonitoring} 
                />;
       default:
-        return <Dashboard patients={patients} contracts={contracts} finance={financeRecords} />;
+        return <Dashboard 
+                  patients={patients} 
+                  contracts={contracts} 
+                  finance={financeRecords} 
+                  onAddFinanceRecord={handleAddFinanceRecord}
+                />;
     }
   };
 
   return (
-    <div className="flex min-h-screen font-sans text-gray-100 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-slate-900 via-[#0a0f1e] to-black selection:bg-cyan-500 selection:text-white relative">
+    <div className="flex min-h-screen font-sans text-slate-100 bg-pastel-dark selection:bg-pastel-pink selection:text-white relative overflow-hidden">
       
-      {/* GLOBAL BACKGROUND - Fixed, z-0, pointer-events-none to prevent click blocking */}
-      <div className="fixed inset-0 overflow-hidden pointer-events-none z-0">
-          <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-cyan-500/10 rounded-full blur-[100px] animate-pulse-glow" />
-          <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-violet-600/10 rounded-full blur-[100px] animate-pulse-glow" />
+      {/* Background Ambient Glows */}
+      <div className="fixed top-0 left-0 w-full h-full pointer-events-none z-0">
+          <div className="absolute top-[-20%] left-[-10%] w-[50%] h-[50%] bg-pastel-blue/10 rounded-full blur-[120px]"></div>
+          <div className="absolute bottom-[-20%] right-[-10%] w-[50%] h-[50%] bg-pastel-pink/10 rounded-full blur-[120px]"></div>
       </div>
 
       <Sidebar 
@@ -312,12 +311,12 @@ const App: React.FC = () => {
         onToggleTheme={toggleTheme}
       />
       
-      {/* MAIN CONTENT - Relative, z-10 to sit above background but respect sidebar */}
-      <main className="flex-1 ml-20 md:ml-64 p-6 md:p-8 relative z-10 overflow-hidden">
-        <div className="relative">
-            {/* Header Mobile-ish */}
+      {/* MAIN CONTENT */}
+      <main className="flex-1 ml-20 md:ml-64 p-6 md:p-8 relative z-10 overflow-x-hidden">
+        <div className="max-w-7xl mx-auto">
+            {/* Header Mobile */}
             <header className="flex justify-between items-center mb-8 md:hidden">
-               <span className="font-tech text-2xl font-bold text-white tracking-widest uppercase">PRIVILEGE CARE</span>
+               <span className="font-tech text-2xl font-bold text-pastel-pink tracking-widest uppercase glow-text">PRIVILEGE CARE</span>
             </header>
             
             {renderContent()}

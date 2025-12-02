@@ -1,6 +1,5 @@
-
 import React, { useState, useEffect } from 'react';
-import { MapPin, Clock, LogIn, LogOut, CheckCircle, AlertTriangle, User, History, ExternalLink } from 'lucide-react';
+import { MapPin, Clock, LogIn, LogOut, CheckCircle, AlertTriangle, User, History, ExternalLink, Calculator } from 'lucide-react';
 import { Employee, TimeRecord } from '../types';
 
 interface TimeCardViewProps {
@@ -76,7 +75,6 @@ export const TimeCardView: React.FC<TimeCardViewProps> = ({ employees, timeRecor
     .sort((a, b) => new Date(b.checkIn).getTime() - new Date(a.checkIn).getTime());
 
   // Verificar se há ponto aberto hoje
-  const todayStr = new Date().toISOString().slice(0, 10);
   const openRecord = myRecords.find(r => r.status === 'Aberto');
   
   // Calcular Total de Horas
@@ -179,4 +177,117 @@ export const TimeCardView: React.FC<TimeCardViewProps> = ({ employees, timeRecor
                     </div>
                 ) : (
                     <div className="text-center py-10 text-slate-600 border border-dashed border-slate-800 rounded-lg">
-                        <User size={32} className="mx-auto mb-
+                        <User size={32} className="mx-auto mb-2 opacity-50"/>
+                        <p>Selecione um colaborador acima.</p>
+                    </div>
+                )}
+            </div>
+        </div>
+
+        {/* Histórico */}
+        <div className="lg:col-span-2 space-y-6">
+             <div className="glass-panel rounded-xl overflow-hidden">
+                <div className="p-4 border-b border-white/5 bg-white/5 flex items-center gap-2">
+                    <History size={18} className="text-cyan-400" />
+                    <h3 className="font-bold text-white tracking-wide">HISTÓRICO DE REGISTROS</h3>
+                </div>
+                
+                <div className="overflow-x-auto max-h-[500px] overflow-y-auto custom-scrollbar">
+                    <table className="w-full text-left text-sm">
+                        <thead className="bg-slate-900/50 text-slate-400 uppercase text-xs tracking-wider sticky top-0 backdrop-blur-md">
+                            <tr>
+                                <th className="p-4">Data</th>
+                                <th className="p-4">Entrada</th>
+                                <th className="p-4">Saída</th>
+                                <th className="p-4">Total</th>
+                                <th className="p-4">Localização</th>
+                                <th className="p-4">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-white/5">
+                            {myRecords.length > 0 ? myRecords.map(record => {
+                                // Calculate hours worked
+                                let duration = '-';
+                                if (record.checkIn && record.checkOut) {
+                                    const start = new Date(record.checkIn).getTime();
+                                    const end = new Date(record.checkOut).getTime();
+                                    const diff = end - start;
+                                    const hours = Math.floor(diff / 3600000);
+                                    const minutes = Math.floor((diff % 3600000) / 60000);
+                                    duration = `${hours}h ${minutes}m`;
+                                }
+
+                                return (
+                                    <tr key={record.id} className="hover:bg-white/5 transition">
+                                        <td className="p-4 font-mono text-slate-300">
+                                            {new Date(record.date).toLocaleDateString('pt-BR')}
+                                        </td>
+                                        <td className="p-4 text-emerald-400 font-mono font-bold">
+                                            {formatTime(record.checkIn)}
+                                        </td>
+                                        <td className="p-4 text-rose-400 font-mono font-bold">
+                                            {formatTime(record.checkOut)}
+                                        </td>
+                                        <td className="p-4 font-medium text-white">
+                                            {duration}
+                                        </td>
+                                        <td className="p-4">
+                                            {record.checkInLocation && (
+                                                <a 
+                                                    href={`https://www.google.com/maps/search/?api=1&query=${record.checkInLocation.lat},${record.checkInLocation.lng}`}
+                                                    target="_blank"
+                                                    rel="noreferrer"
+                                                    className="flex items-center gap-1 text-cyan-500 hover:text-cyan-400 text-xs transition-colors"
+                                                >
+                                                    <MapPin size={12} /> Ver Mapa <ExternalLink size={10} />
+                                                </a>
+                                            )}
+                                        </td>
+                                        <td className="p-4">
+                                            <span className={`px-2 py-1 rounded text-[10px] uppercase font-bold tracking-wider ${
+                                                record.status === 'Aberto' 
+                                                ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' 
+                                                : 'bg-slate-700/50 text-slate-400 border border-slate-600'
+                                            }`}>
+                                                {record.status}
+                                            </span>
+                                        </td>
+                                    </tr>
+                                );
+                            }) : (
+                                <tr>
+                                    <td colSpan={6} className="p-8 text-center text-slate-600 italic">
+                                        Nenhum registro encontrado para este colaborador.
+                                    </td>
+                                </tr>
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+             </div>
+
+             {/* Novo Card de Resumo de Horas - Solicitado */}
+             {myRecords.length > 0 && (
+                <div className="glass-panel p-6 rounded-xl border border-cyan-500/20 bg-gradient-to-r from-slate-900 to-cyan-900/10 shadow-[0_0_20px_rgba(8,145,178,0.1)] flex justify-between items-center relative overflow-hidden group">
+                    <div className="absolute top-0 right-0 p-8 bg-cyan-500/5 rounded-full blur-2xl transform translate-x-1/2 -translate-y-1/2 group-hover:bg-cyan-500/10 transition-all duration-500"></div>
+                    
+                    <div className="relative z-10">
+                        <div className="flex items-center gap-2 mb-1">
+                            <Calculator className="text-cyan-400" size={20} />
+                            <h4 className="text-white font-tech font-bold text-xl uppercase tracking-wider">Total Acumulado</h4>
+                        </div>
+                        <p className="text-slate-400 text-sm">Somatória de horas trabalhadas no histórico acima.</p>
+                    </div>
+
+                    <div className="relative z-10 text-right">
+                        <div className="text-5xl font-mono font-bold text-white text-shadow-neon-blue transition-all duration-300 group-hover:scale-105">
+                            {totalHours}h <span className="text-2xl text-cyan-300/70">{totalMinutes}m</span>
+                        </div>
+                    </div>
+                </div>
+             )}
+        </div>
+      </div>
+    </div>
+  );
+};

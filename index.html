@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Privilege Care Home Care</title>
+    <title>Privilege Care - Neon Future</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
       tailwind.config = {
@@ -11,60 +11,75 @@
         theme: {
           extend: {
             colors: {
-              cyber: {
-                dark: '#0f172a',
-                glass: 'rgba(30, 41, 59, 0.7)',
-                primary: '#06b6d4', // Cyan
-                secondary: '#8b5cf6', // Violet
-                accent: '#f472b6', // Pink
+              pastel: {
+                pink: '#f9a8d4', // Rosa Pastel Brilhante
+                blue: '#a5f3fc', // Azul Ciano Pastel
+                gray: '#94a3b8', // Cinza Médio
+                dark: '#0f172a', // Fundo Escuro
+                card: 'rgba(15, 23, 42, 0.6)'
               }
             },
+            fontFamily: {
+              sans: ['Inter', 'sans-serif'],
+              tech: ['Orbitron', 'sans-serif'], // Fonte opcional para títulos futuristas
+            },
             boxShadow: {
-              'neon-blue': '0 0 10px rgba(6, 182, 212, 0.5), 0 0 20px rgba(6, 182, 212, 0.3)',
-              'neon-purple': '0 0 10px rgba(139, 92, 246, 0.5), 0 0 20px rgba(139, 92, 246, 0.3)',
+              'neon-pink': '0 0 20px -5px rgba(249, 168, 212, 0.5)',
+              'neon-blue': '0 0 20px -5px rgba(165, 243, 252, 0.5)',
+              'glass': '0 8px 32px 0 rgba(0, 0, 0, 0.37)',
+            },
+            animation: {
+              'pulse-slow': 'pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite',
             }
           }
         }
       }
     </script>
-    <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
     <style>
       body { 
         font-family: 'Inter', sans-serif; 
         background-color: #020617;
         color: #e2e8f0;
       }
-      h1, h2, h3, h4, h5, h6, .font-tech {
-        font-family: 'Rajdhani', sans-serif;
-      }
       
-      .glass-panel {
+      h1, h2, h3, .font-tech {
+        font-family: 'Inter', sans-serif;
+        letter-spacing: 0.05em;
+      }
+
+      /* Scrollbar Futurista */
+      ::-webkit-scrollbar { width: 6px; height: 6px; }
+      ::-webkit-scrollbar-track { background: #0f172a; }
+      ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+      ::-webkit-scrollbar-thumb:hover { background: #f9a8d4; }
+
+      /* Classe Global para Cards Neon */
+      .neon-card {
         background: rgba(30, 41, 59, 0.4);
         backdrop-filter: blur(12px);
         -webkit-backdrop-filter: blur(12px);
         border: 1px solid rgba(255, 255, 255, 0.05);
-        box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+        transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
       }
       
-      .glass-card {
-        background: linear-gradient(145deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0.01) 100%);
-        backdrop-filter: blur(10px);
-        border: 1px solid rgba(255, 255, 255, 0.05);
+      .neon-card:hover {
+        transform: translateY(-2px);
+        background: rgba(30, 41, 59, 0.7);
+        border-color: rgba(249, 168, 212, 0.5); /* Borda Rosa Pastel */
+        box-shadow: 0 0 25px rgba(249, 168, 212, 0.2), inset 0 0 10px rgba(165, 243, 252, 0.1);
       }
 
-      ::-webkit-scrollbar { width: 8px; height: 8px; }
-      ::-webkit-scrollbar-track { background: #0f172a; }
-      ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
-      ::-webkit-scrollbar-thumb:hover { background: #475569; }
-
-      .text-neon-blue { color: #22d3ee; text-shadow: 0 0 10px rgba(34, 211, 238, 0.5); }
-      .text-neon-purple { color: #c084fc; text-shadow: 0 0 10px rgba(192, 132, 252, 0.5); }
-      
-      @keyframes pulse-glow {
-        0%, 100% { opacity: 1; filter: brightness(1); }
-        50% { opacity: 0.8; filter: brightness(1.2); }
+      /* Inputs escuros */
+      input, select, textarea {
+        background-color: rgba(15, 23, 42, 0.8) !important;
+        border-color: rgba(148, 163, 184, 0.2) !important;
+        color: white !important;
       }
-      .animate-pulse-glow { animation: pulse-glow 3s infinite; }
+      input:focus, select:focus, textarea:focus {
+        border-color: #a5f3fc !important;
+        box-shadow: 0 0 10px rgba(165, 243, 252, 0.2) !important;
+      }
     </style>
   <script type="importmap">
 {
