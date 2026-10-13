@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   Mic,
   Send,
@@ -12,13 +12,16 @@ import {
   Check,
   X,
   Edit2,
-  Volume2
+  Volume2,
+  Loader2
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { processAssistantMessage } from '../../services/assistantEngine';
 import { AssistantTurn, StructuredAssistantAction, TaskPayload } from '../../types/actions';
 import { Patient, Employee } from '../../types';
 import { TaskItem } from '../../types/tasks';
+
+type VoiceState = 'IDLE' | 'LISTENING' | 'PROCESSING' | 'ERROR';
 
 interface AssistantHomeProps {
   onNavigate: (view: string) => void;
@@ -39,7 +42,12 @@ export const AssistantHome: React.FC<AssistantHomeProps> = ({
 }) => {
   const { user } = useAuth();
   const [inputText, setInputText] = useState('');
-  const [isListening, setIsListening] = useState(false);
+  const [voiceState, setVoiceState] = useState<VoiceState>('IDLE');
+  const [voiceError, setVoiceError] = useState<string | null>(null);
+  const recognitionRef = useRef<any>(null);
+  const speechTranscriptRef = useRef<string>('');
+  const speechProcessedRef = useRef<boolean>(false);
+  const errorTimerRef = useRef<any>(null);
   const [editingActionId, setEditingActionId] = useState<string | null>(null);
   const [editFormData, setEditFormData] = useState<Partial<TaskPayload>>({});
 
@@ -173,12 +181,177 @@ export const AssistantHome: React.FC<AssistantHomeProps> = ({
     setEditingActionId(null);
   };
 
-  const handleVoiceClick = () => {
-    // Mantém o botão FALAR visualmente presente sem gravar áudio nesta etapa
-    setIsListening((prev) => !prev);
-    setTimeout(() => {
-      setIsListening(false);
-    }, 1500);
+  const clearErrorTimer = () => {
+    if (errorTimerRef.current) {
+      clearTimeout(errorTimerRef.current);
+      errorTimerRef.current = null;
+    }
+  };
+
+  const showVoiceError = (errorMessage: string) => {
+    clearErrorTimer();
+    setVoiceState('ERROR');
+    setVoiceError(errorMessage);
+    errorTimerRef.current = setTimeout(() => {
+      setVoiceState('IDLE');
+      setVoiceError(null);
+    }, 4500);
+  };
+
+  const stopRecognition = () => {
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.abort();
+      } catch {
+        // Ignora se já estiver parado
+      }
+      recognitionRef.current = null;
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      clearErrorTimer();
+      stopRecognition();
+    };
+  }, []);
+
+  const handleVoiceClick = async () => {
+    clearErrorTimer();
+
+    // Se já estiver ouvindo, encerra a captura manualmente
+    if (voiceState === 'LISTENING') {
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.stop();
+        } catch {
+          // fallback
+        }
+      }
+      return;
+    }
+
+    // Se estiver em processamento, não faz nada
+    if (voiceState === 'PROCESSING') return;
+
+    setVoiceError(null);
+
+    // 1. Verifica compatibilidade do navegador com SpeechRecognition
+    const SpeechRecognitionClass =
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+
+    if (!SpeechRecognitionClass) {
+      showVoiceError('Seu navegador não oferece suporte à entrada por voz. Você pode continuar digitando.');
+      return;
+    }
+
+    // 2. Solicitar permissão para microfone se necessário
+    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        // Encerra imediatamente as tracks de teste para liberar o canal
+        stream.getTracks().forEach((track) => track.stop());
+      } catch (err: any) {
+        if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+          showVoiceError('Para usar o assistente por voz, permita o acesso ao microfone.');
+          return;
+        } else {
+          showVoiceError('Permita o acesso ao microfone para usar o assistente por voz.');
+          return;
+        }
+      }
+    }
+
+    // 3. Inicializa SpeechRecognition em pt-BR
+    try {
+      const recognition = new SpeechRecognitionClass();
+      recognition.lang = 'pt-BR';
+      recognition.continuous = false;
+      recognition.interimResults = true;
+      recognition.maxAlternatives = 1;
+
+      speechTranscriptRef.current = '';
+      speechProcessedRef.current = false;
+      recognitionRef.current = recognition;
+
+      recognition.onstart = () => {
+        setVoiceState('LISTENING');
+        setVoiceError(null);
+      };
+
+      recognition.onresult = (event: any) => {
+        let interim = '';
+        let final = '';
+
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+          const result = event.results[i];
+          const transcript = result[0]?.transcript || '';
+          if (result.isFinal) {
+            final += transcript;
+          } else {
+            interim += transcript;
+          }
+        }
+
+        const recognizedText = (final || interim).trim();
+        if (recognizedText) {
+          speechTranscriptRef.current = recognizedText;
+          setInputText(recognizedText);
+        }
+      };
+
+      recognition.onerror = (event: any) => {
+        const errorType = event?.error;
+        stopRecognition();
+
+        if (errorType === 'no-speech') {
+          showVoiceError('Não consegui ouvir nada. Tente novamente.');
+        } else if (errorType === 'not-allowed' || errorType === 'service-not-allowed') {
+          showVoiceError('Para usar o assistente por voz, permita o acesso ao microfone.');
+        } else if (errorType === 'audio-capture') {
+          showVoiceError('Permita o acesso ao microfone para usar o assistente por voz.');
+        } else if (errorType === 'network' || errorType === 'bad-grammar') {
+          showVoiceError('Não consegui processar sua voz agora. Você pode continuar digitando.');
+        } else {
+          showVoiceError('Não consegui entender o áudio. Tente novamente.');
+        }
+      };
+
+      recognition.onend = () => {
+        recognitionRef.current = null;
+        const capturedText = speechTranscriptRef.current.trim();
+
+        if (speechProcessedRef.current) return;
+        speechProcessedRef.current = true;
+
+        if (!capturedText) {
+          // Se não capturou texto e não está em estado de erro
+          setVoiceState((current) => {
+            if (current === 'LISTENING') {
+              showVoiceError('Não consegui ouvir nada. Tente novamente.');
+              return 'ERROR';
+            }
+            return current;
+          });
+          return;
+        }
+
+        // Coloca o texto transcrito no campo de mensagem
+        setInputText(capturedText);
+        setVoiceState('PROCESSING');
+
+        // Envia o texto para o MESMO fluxo de IA já existente
+        setTimeout(() => {
+          handleSend(capturedText);
+          setVoiceState('IDLE');
+          speechTranscriptRef.current = '';
+        }, 300);
+      };
+
+      recognition.start();
+    } catch {
+      showVoiceError('Não consegui processar sua voz agora. Você pode continuar digitando.');
+    }
   };
 
   // Contadores para os cards do bloco "PRECISA DA SUA ATENÇÃO"
