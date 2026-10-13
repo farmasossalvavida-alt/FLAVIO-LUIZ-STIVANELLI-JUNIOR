@@ -6,6 +6,7 @@ import { PeopleView } from './components/assistant/PeopleView';
 import { TasksView } from './components/assistant/TasksView';
 import { MoreView } from './components/assistant/MoreView';
 import { AuditLogView, AuditItem } from './components/assistant/AuditLogView';
+import { TaskItem } from './types/tasks';
 import { Dashboard } from './components/Dashboard';
 import { PatientsView } from './components/PatientsView';
 import { EmployeesView } from './components/EmployeesView';
@@ -94,6 +95,45 @@ const initialShifts: Shift[] = [
   { id: 's2', patientId: 'p2', employeeId: 'e2', date: '2026-10-13', startTime: '20:00', endTime: '08:00', value: 220, status: 'Agendado' },
 ];
 
+const initialTasks: TaskItem[] = [
+  {
+    id: 't1',
+    title: 'Ligar para a família da Maria (Alinhamento cuidados)',
+    category: 'Atendimento Familiar',
+    dueDate: 'Hoje, 09:00',
+    priority: 'high',
+    assignedTo: 'Flavio',
+    status: 'pending',
+  },
+  {
+    id: 't2',
+    title: 'Validar comprovante de cobertura da Camila',
+    category: 'Financeiro / RH',
+    dueDate: 'Hoje, 11:30',
+    priority: 'medium',
+    assignedTo: 'Sócia',
+    status: 'pending',
+  },
+  {
+    id: 't3',
+    title: 'Renovação do contrato do paciente Antonio Santos',
+    category: 'Contratos',
+    dueDate: 'Ontem (Atrasada)',
+    priority: 'urgent',
+    assignedTo: 'Flavio',
+    status: 'pending',
+  },
+  {
+    id: 't4',
+    title: 'Comprar materiais de curativo para Maria Silva',
+    category: 'Suprimentos',
+    dueDate: 'Hoje, 08:00',
+    priority: 'medium',
+    assignedTo: 'Sócia',
+    status: 'completed',
+  },
+];
+
 const initialAuditLogs: AuditItem[] = [
   { id: 'a1', user: 'Flavio', action: 'Criou nova tarefa: Ligar para a família da Maria', entityType: 'tasks', timestamp: '13/10/2026 09:12' },
   { id: 'a2', user: 'Sócia', action: 'Registrou cobertura: Camila na Maria Silva', entityType: 'shifts', timestamp: '12/10/2026 19:40' },
@@ -113,8 +153,23 @@ const MainApp: React.FC = () => {
   const [shifts, setShifts] = useState<Shift[]>(initialShifts);
   const [timeRecords, setTimeRecords] = useState<TimeRecord[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditItem[]>(initialAuditLogs);
+  const [tasks, setTasks] = useState<TaskItem[]>(initialTasks);
 
   const { user } = useAuth();
+
+  const handleToggleTask = (id: string) => {
+    setTasks((prev) =>
+      prev.map((t) => (t.id === id ? { ...t, status: t.status === 'completed' ? 'pending' : 'completed' } : t))
+    );
+  };
+
+  const handleAddTask = (task: Omit<TaskItem, 'id'>) => {
+    const newTask: TaskItem = {
+      ...task,
+      id: Math.random().toString(36).substring(2, 9),
+    };
+    setTasks((prev) => [newTask, ...prev]);
+  };
 
   const handleAddAuditLog = (action: string, entityType: string, details?: any) => {
     const newLog: AuditItem = {
@@ -250,6 +305,10 @@ const MainApp: React.FC = () => {
           <AssistantHome 
             onNavigate={(view) => setCurrentView(view)} 
             onAddAuditLog={handleAddAuditLog}
+            patients={patients}
+            employees={employees}
+            tasks={tasks}
+            onAddTask={handleAddTask}
           />
         );
 
@@ -270,7 +329,7 @@ const MainApp: React.FC = () => {
 
       // 4. TAREFAS / PENDÊNCIAS
       case 'tasks':
-        return <TasksView />;
+        return <TasksView tasks={tasks} onToggleTask={handleToggleTask} onAddTask={handleAddTask} />;
 
       // 5. MAIS
       case 'more':
@@ -360,6 +419,10 @@ const MainApp: React.FC = () => {
           <AssistantHome 
             onNavigate={(view) => setCurrentView(view)} 
             onAddAuditLog={handleAddAuditLog}
+            patients={patients}
+            employees={employees}
+            tasks={tasks}
+            onAddTask={handleAddTask}
           />
         );
     }

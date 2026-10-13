@@ -1,14 +1,34 @@
-// Princípio de Ações Estruturadas para Futura Camada de IA
+// Princípio de Ações Estruturadas do Assistente Privilege Care
 export type AssistantActionType =
   | 'create_task'
   | 'create_reminder'
+  | 'query_tasks'
   | 'query_agenda'
-  | 'create_patient'
-  | 'create_shift'
-  | 'register_coverage'
-  | 'query_pending_payments'
-  | 'close_month_preview'
+  | 'query_patients'
+  | 'query_professionals'
   | 'general_query';
+
+export interface TaskPayload {
+  title: string;
+  description?: string;
+  due_date: string; // YYYY-MM-DD
+  due_date_label?: string; // e.g. "Amanhã", "17/10/2026"
+  due_time?: string; // HH:mm
+  assigned_to?: string;
+  assigned_to_name?: string;
+  priority: 'low' | 'medium' | 'high' | 'urgent';
+  category: string;
+  recurrence?: string;
+  is_reminder?: boolean;
+}
+
+export interface QueryResultItem {
+  id: string;
+  primary: string;
+  secondary?: string;
+  meta?: string;
+  badge?: string;
+}
 
 export interface StructuredAssistantAction {
   id: string;
@@ -18,6 +38,7 @@ export interface StructuredAssistantAction {
   requiresConfirmation: boolean;
   explanation: string;
   status: 'suggested' | 'confirmed' | 'cancelled' | 'executed';
+  results?: QueryResultItem[];
 }
 
 export interface AssistantTurn {
@@ -26,4 +47,9 @@ export interface AssistantTurn {
   text: string;
   timestamp: string;
   action?: StructuredAssistantAction;
+  waitingForClarification?: {
+    actionType: 'create_task' | 'create_reminder';
+    missingField: 'time' | 'patient' | 'title' | 'date';
+    partialPayload: Partial<TaskPayload>;
+  };
 }

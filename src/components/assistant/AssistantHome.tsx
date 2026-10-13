@@ -11,31 +11,47 @@ import {
   Sparkles,
   Check,
   X,
+  Edit2,
   Volume2
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import { interpretNaturalLanguage } from '../../services/assistantEngine';
-import { AssistantTurn, StructuredAssistantAction } from '../../types/actions';
+import { processAssistantMessage } from '../../services/assistantEngine';
+import { AssistantTurn, StructuredAssistantAction, TaskPayload } from '../../types/actions';
+import { Patient, Employee } from '../../types';
+import { TaskItem } from '../../types/tasks';
 
 interface AssistantHomeProps {
   onNavigate: (view: string) => void;
   onAddAuditLog: (action: string, entityType: string, details: any) => void;
+  patients: Patient[];
+  employees: Employee[];
+  tasks: TaskItem[];
+  onAddTask: (task: Omit<TaskItem, 'id'>) => void;
 }
 
-export const AssistantHome: React.FC<AssistantHomeProps> = ({ onNavigate, onAddAuditLog }) => {
+export const AssistantHome: React.FC<AssistantHomeProps> = ({
+  onNavigate,
+  onAddAuditLog,
+  patients,
+  employees,
+  tasks,
+  onAddTask,
+}) => {
   const { user } = useAuth();
   const [inputText, setInputText] = useState('');
   const [isListening, setIsListening] = useState(false);
+  const [editingActionId, setEditingActionId] = useState<string | null>(null);
+  const [editFormData, setEditFormData] = useState<Partial<TaskPayload>>({});
+
   const [turns, setTurns] = useState<AssistantTurn[]>([
     {
       id: 'welcome',
       role: 'assistant',
-      text: 'Olá! Sou o Assistente Privilege. Você pode falar ou digitar naturalmente sobre escalas, pagamentos, plantões e tarefas.',
+      text: 'Olá! Sou o Assistente Privilege. Você pode criar tarefas, lembretes e consultar pacientes, profissionais ou pendências.',
       timestamp: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
     },
   ]);
 
-  // Saudação dinâmica baseada no horário
   const getGreeting = () => {
     const hour = new Date().getHours();
     if (hour >= 5 && hour < 12) return 'Bom dia';
@@ -54,54 +70,130 @@ export const AssistantHome: React.FC<AssistantHomeProps> = ({ onNavigate, onAddA
       timestamp: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
     };
 
-    const assistantTurn = interpretNaturalLanguage(message);
+    const result = processAssistantMessage(message, {
+      user: user ? { id: user.id, name: user.name } : null,
+      patients,
+      employees,
+      tasks,
+      recentTurns: turns,
+    });
 
-    setTurns((prev) => [...prev, userTurn, assistantTurn]);
+    setTurns((prev) => [...prev, userTurn, result.turn]);
     setInputText('');
 
     if (onAddAuditLog) {
       onAddAuditLog(
-        `Interação com assistente: "${message.slice(0, 40)}..."`,
+        `Interação no assistente: "${message.slice(0, 40)}"`,
         'conversations',
-        { text: message, intent: assistantTurn.action?.type }
+        { text: message, intent: result.turn.action?.type }
       );
     }
   };
 
-  const handleConfirmAction = (action: StructuredAssistantAction) => {
-    action.status = 'executed';
-    setTurns((prev) => [...prev]);
-    if (onAddAuditLog) {
-      onAddAuditLog(
-        `Ação confirmada via assistente: ${action.label}`,
-        action.type,
-        action.payload
-      );
+  const handleConfirmAction = (turn: AssistantTurn) => {
+    if (!turn.action) return;
+    const action = turn.action;
+    const payload = action.payload as TaskPayload;
+
+    // Se a ação for de criação, persiste na lista de tarefas
+    if (action.type === 'create_task' || action.type === 'create_reminder') {
+      onAddTask({
+        title: payload.title,
+        category: payload.category || 'Geral',
+        dueDate: `${payload.due_date_label || 'Data'}, ${payload.due_time || '09:00'}`,
+        priority: payload.priority || 'medium',
+        assignedTo: payload.assigned_to_name || user?.name || 'Flavio',
+        status: 'pending',
+        isReminder: action.type === 'create_reminder' || payload.is_reminder,
+      });
+
+      if (onAddAuditLog) {
+        onAddAuditLog(
+          `${action.type === 'create_reminder' ? 'Lembrete' : 'Tarefa'} criada: ${payload.title}`,
+          'tasks',
+          payload
+        );
+      }
     }
+
+    setTurns((prev) =>
+      prev.map((t) => {
+        if (t.id === turn.id && t.action) {
+          return {
+            ...t,
+            action: { ...t.action, status: 'executed' },
+            text: `Certo. ${action.type === 'create_reminder' ? 'Lembrete criado' : 'Tarefa criada'} para ${payload.due_date_label} às ${payload.due_time}.`,
+          };
+        }
+        return t;
+      })
+    );
+    setEditingActionId(null);
   };
 
-  const handleCancelAction = (action: StructuredAssistantAction) => {
-    action.status = 'cancelled';
-    setTurns((prev) => [...prev]);
+  const handleCancelAction = (turn: AssistantTurn) => {
+    setTurns((prev) =>
+      prev.map((t) => {
+        if (t.id === turn.id && t.action) {
+          return {
+            ...t,
+            action: { ...t.action, status: 'cancelled' },
+            text: 'Ação cancelada. Nenhuma informação foi alterada.',
+          };
+        }
+        return t;
+      })
+    );
+    setEditingActionId(null);
+  };
+
+  const handleStartEdit = (action: StructuredAssistantAction) => {
+    setEditingActionId(action.id);
+    setEditFormData(action.payload as TaskPayload);
+  };
+
+  const handleSaveEdit = (turn: AssistantTurn) => {
+    if (!turn.action) return;
+    const updatedPayload = { ...turn.action.payload, ...editFormData };
+    setTurns((prev) =>
+      prev.map((t) => {
+        if (t.id === turn.id && t.action) {
+          return {
+            ...t,
+            action: {
+              ...t.action,
+              payload: updatedPayload,
+            },
+            text: `Entendi assim:\n\n📌 ${updatedPayload.title}\n📅 ${updatedPayload.due_date_label || updatedPayload.due_date}\n🕒 ${updatedPayload.due_time}\n🏷️ ${updatedPayload.category}\n🔔 ${updatedPayload.is_reminder ? 'Lembrete' : 'Tarefa'}\n\nConfirmar?`,
+          };
+        }
+        return t;
+      })
+    );
+    setEditingActionId(null);
   };
 
   const handleVoiceClick = () => {
-    // Preparação visual/estrutural para entrada de voz
+    // Mantém o botão FALAR visualmente presente sem gravar áudio nesta etapa
     setIsListening((prev) => !prev);
-    if (!isListening) {
-      setTimeout(() => {
-        setIsListening(false);
-        handleSend('Me lembra amanhã às 9h de ligar para a família da Maria.');
-      }, 1600);
-    }
+    setTimeout(() => {
+      setIsListening(false);
+    }, 1500);
   };
 
+  // Contadores para os cards do bloco "PRECISA DA SUA ATENÇÃO"
+  const pendingTasks = tasks.filter((t) => t.status === 'pending');
+  const todayTasks = tasks.filter((t) => t.dueDate.toLowerCase().includes('hoje') && t.status === 'pending');
+  const lateTasks = tasks.filter((t) => t.dueDate.toLowerCase().includes('atrasad') && t.status === 'pending');
+
   const samplePrompts = [
-    'Me lembra amanhã às 9h de ligar para a família da Maria.',
-    'A Camila fez a cobertura da Solange na Maria ontem.',
-    'Quanto tenho para pagar para a Camila?',
-    'Quais são minhas pendências hoje?',
-    'Vamos fechar outubro.',
+    'Me lembra amanhã às 15h de ligar para a família da Maria.',
+    'O que tenho para hoje?',
+    'Quais tarefas estão atrasadas?',
+    'Tenho que conferir o contrato da Maria sexta às 10.',
+    'Qual o telefone da Maria?',
+    'Quais profissionais estão ativos?',
+    'Me lembra amanhã de ligar para Maria.',
   ];
 
   return (
@@ -137,8 +229,8 @@ export const AssistantHome: React.FC<AssistantHomeProps> = ({ onNavigate, onAddA
           </button>
           <p className="text-xs text-slate-400 mt-3">
             {isListening
-              ? 'Gravando áudio para transcrição...'
-              : 'Clique para falar por voz ou digite no campo abaixo'}
+              ? 'Reconhecimento de voz em preparação para próxima etapa'
+              : 'Clique para falar ou digite sua solicitação no campo abaixo'}
           </p>
         </div>
 
@@ -169,10 +261,10 @@ export const AssistantHome: React.FC<AssistantHomeProps> = ({ onNavigate, onAddA
           </button>
         </form>
 
-        {/* Sugestões rápidas de uso futuro */}
+        {/* Sugestões rápidas das ações solicitadas */}
         <div className="mt-6 pt-5 border-t border-slate-800/80 text-left">
           <span className="text-xs uppercase tracking-wider text-slate-400 font-semibold block mb-2">
-            Exemplos de linguagem natural suportados:
+            Exemplos de testes:
           </span>
           <div className="flex flex-wrap gap-2">
             {samplePrompts.map((prompt, i) => (
@@ -189,15 +281,15 @@ export const AssistantHome: React.FC<AssistantHomeProps> = ({ onNavigate, onAddA
         </div>
       </div>
 
-      {/* ÁREA DE RESPOSTAS E AÇÕES ESTRUTURADAS DO ASSISTENTE */}
+      {/* ÁREA DE CONVERSA DO ASSISTENTE PRIVILEGE */}
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-400 flex items-center gap-2">
             <Volume2 className="w-4 h-4 text-pastel-pink" />
-            Respostas do Assistente & Ações Propostas
+            Conversa com o Assistente Privilege
           </h2>
           <span className="text-xs text-slate-400">
-            Princípio: A IA propõe, o banco armazena, você valida
+            Ações estruturadas validadas antes de gravar no banco
           </span>
         </div>
 
@@ -217,20 +309,20 @@ export const AssistantHome: React.FC<AssistantHomeProps> = ({ onNavigate, onAddA
                 </span>
                 <span>{turn.timestamp}</span>
               </div>
-              <p className="text-slate-200 text-sm md:text-base leading-relaxed text-left">
+              <p className="text-slate-200 text-sm md:text-base leading-relaxed text-left whitespace-pre-line">
                 {turn.text}
               </p>
 
-              {/* CARD DE AÇÃO ESTRUTURADA COM VALIDAÇÃO */}
-              {turn.action && (
+              {/* CARD DE CONFIRMAÇÃO / AÇÃO ESTRUTURADA */}
+              {turn.action && turn.action.requiresConfirmation && (
                 <div className="mt-4 p-4 rounded-xl bg-slate-950/80 border border-pastel-pink/30 text-left">
-                  <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center justify-between mb-3">
                     <span className="text-xs font-semibold text-pastel-pink uppercase tracking-wider flex items-center gap-1.5">
                       <Sparkles className="w-3.5 h-3.5" />
                       {turn.action.label}
                     </span>
                     <span
-                      className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                      className={`text-xs px-2.5 py-0.5 rounded-full font-medium ${
                         turn.action.status === 'executed'
                           ? 'bg-emerald-500/20 text-emerald-300'
                           : turn.action.status === 'cancelled'
@@ -246,38 +338,78 @@ export const AssistantHome: React.FC<AssistantHomeProps> = ({ onNavigate, onAddA
                     </span>
                   </div>
 
-                  <p className="text-xs text-slate-400 mb-3">{turn.action.explanation}</p>
-
-                  {/* DADOS ESTRUTURADOS EXTRAÍDOS PELA INTENÇÃO */}
-                  <div className="bg-slate-900/90 rounded-lg p-3 text-xs text-slate-300 space-y-1 font-mono border border-slate-800">
-                    {Object.entries(turn.action.payload).map(([k, v]) => (
-                      <div key={k} className="flex justify-between">
-                        <span className="text-slate-400">{k}:</span>
-                        <span className="font-semibold text-pastel-blue">
-                          {typeof v === 'number'
-                            ? v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-                            : String(v)}
-                        </span>
+                  {editingActionId === turn.action.id ? (
+                    <div className="space-y-3 mb-4 bg-slate-900/90 p-3 rounded-lg border border-slate-800">
+                      <div>
+                        <label className="text-[11px] text-slate-400 block mb-1">Título</label>
+                        <input
+                          type="text"
+                          value={editFormData.title || ''}
+                          onChange={(e) => setEditFormData({ ...editFormData, title: e.target.value })}
+                          className="w-full px-3 py-1.5 text-xs rounded bg-slate-950 border border-slate-700 text-white"
+                        />
                       </div>
-                    ))}
-                  </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="text-[11px] text-slate-400 block mb-1">Horário</label>
+                          <input
+                            type="text"
+                            value={editFormData.due_time || ''}
+                            onChange={(e) => setEditFormData({ ...editFormData, due_time: e.target.value })}
+                            className="w-full px-3 py-1.5 text-xs rounded bg-slate-950 border border-slate-700 text-white"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[11px] text-slate-400 block mb-1">Categoria</label>
+                          <input
+                            type="text"
+                            value={editFormData.category || ''}
+                            onChange={(e) => setEditFormData({ ...editFormData, category: e.target.value })}
+                            className="w-full px-3 py-1.5 text-xs rounded bg-slate-950 border border-slate-700 text-white"
+                          />
+                        </div>
+                      </div>
+                      <div className="flex gap-2 justify-end pt-1">
+                        <button
+                          type="button"
+                          onClick={() => setEditingActionId(null)}
+                          className="px-2.5 py-1 text-xs rounded bg-slate-800 text-slate-300"
+                        >
+                          Fechar
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleSaveEdit(turn)}
+                          className="px-2.5 py-1 text-xs rounded bg-pastel-blue text-slate-950 font-semibold"
+                        >
+                          Salvar Alteração
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
 
-                  {/* BOTÕES DE CONFIRMAÇÃO / VALIDAÇÃO ANTES DE ALTERAR O BANCO */}
-                  {turn.action.requiresConfirmation && turn.action.status === 'suggested' && (
-                    <div className="mt-3 flex items-center gap-2 pt-2 border-t border-slate-800">
+                  {turn.action.status === 'suggested' && (
+                    <div className="flex items-center gap-2 pt-2 border-t border-slate-800/80">
                       <button
-                        onClick={() => handleConfirmAction(turn.action!)}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold transition-colors"
+                        onClick={() => handleConfirmAction(turn)}
+                        className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold transition-colors shadow-lg shadow-emerald-900/30"
                       >
                         <Check className="w-3.5 h-3.5" />
-                        Confirmar e Gravar
+                        CONFIRMAR
                       </button>
                       <button
-                        onClick={() => handleCancelAction(turn.action!)}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition-colors"
+                        onClick={() => handleStartEdit(turn.action!)}
+                        className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition-colors"
+                      >
+                        <Edit2 className="w-3.5 h-3.5" />
+                        EDITAR
+                      </button>
+                      <button
+                        onClick={() => handleCancelAction(turn)}
+                        className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-800/80 hover:bg-rose-950/40 text-slate-400 hover:text-rose-300 text-xs font-semibold transition-colors"
                       >
                         <X className="w-3.5 h-3.5" />
-                        Descartar
+                        CANCELAR
                       </button>
                     </div>
                   )}
@@ -295,11 +427,10 @@ export const AssistantHome: React.FC<AssistantHomeProps> = ({ onNavigate, onAddA
             <AlertCircle className="w-5 h-5 text-pastel-pink" />
             PRECISA DA SUA ATENÇÃO
           </h2>
-          <span className="text-xs text-slate-400">Resumo operacional</span>
+          <span className="text-xs text-slate-400">Resumo operacional sincronizado</span>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {/* Card: Pendências */}
           <div
             onClick={() => onNavigate('tasks')}
             className="neon-card p-5 rounded-xl border border-slate-800 cursor-pointer hover:border-pastel-pink/50 group"
@@ -308,14 +439,13 @@ export const AssistantHome: React.FC<AssistantHomeProps> = ({ onNavigate, onAddA
               <span className="text-xs uppercase font-semibold text-slate-400">Pendências</span>
               <AlertCircle className="w-5 h-5 text-amber-400 group-hover:scale-110 transition-transform" />
             </div>
-            <div className="text-2xl font-bold text-white mb-1">3</div>
+            <div className="text-2xl font-bold text-white mb-1">{pendingTasks.length}</div>
             <p className="text-xs text-slate-400">Demandas abertas para os sócios</p>
             <div className="mt-3 text-xs text-pastel-pink flex items-center gap-1 font-semibold">
               Ver detalhes <ArrowRight className="w-3 h-3" />
             </div>
           </div>
 
-          {/* Card: Tarefas de Hoje */}
           <div
             onClick={() => onNavigate('tasks')}
             className="neon-card p-5 rounded-xl border border-slate-800 cursor-pointer hover:border-pastel-blue/50 group"
@@ -324,14 +454,13 @@ export const AssistantHome: React.FC<AssistantHomeProps> = ({ onNavigate, onAddA
               <span className="text-xs uppercase font-semibold text-slate-400">Tarefas de Hoje</span>
               <CheckCircle2 className="w-5 h-5 text-pastel-blue group-hover:scale-110 transition-transform" />
             </div>
-            <div className="text-2xl font-bold text-white mb-1">5</div>
-            <p className="text-xs text-slate-400">2 concluídas, 3 a realizar</p>
+            <div className="text-2xl font-bold text-white mb-1">{todayTasks.length}</div>
+            <p className="text-xs text-slate-400">Atividades com prazo para hoje</p>
             <div className="mt-3 text-xs text-pastel-blue flex items-center gap-1 font-semibold">
               Abrir lista <ArrowRight className="w-3 h-3" />
             </div>
           </div>
 
-          {/* Card: Tarefas Atrasadas */}
           <div
             onClick={() => onNavigate('tasks')}
             className="neon-card p-5 rounded-xl border border-slate-800 cursor-pointer hover:border-rose-500/50 group"
@@ -340,14 +469,13 @@ export const AssistantHome: React.FC<AssistantHomeProps> = ({ onNavigate, onAddA
               <span className="text-xs uppercase font-semibold text-slate-400">Tarefas Atrasadas</span>
               <AlertTriangle className="w-5 h-5 text-rose-400 group-hover:scale-110 transition-transform" />
             </div>
-            <div className="text-2xl font-bold text-rose-400 mb-1">1</div>
-            <p className="text-xs text-slate-400">Contrato de renovação pendente</p>
+            <div className="text-2xl font-bold text-rose-400 mb-1">{lateTasks.length}</div>
+            <p className="text-xs text-slate-400">Pendências que demandam atenção imediata</p>
             <div className="mt-3 text-xs text-rose-400 flex items-center gap-1 font-semibold">
               Resolver agora <ArrowRight className="w-3 h-3" />
             </div>
           </div>
 
-          {/* Card: Próximo Compromisso */}
           <div
             onClick={() => onNavigate('agenda')}
             className="neon-card p-5 rounded-xl border border-slate-800 cursor-pointer hover:border-emerald-500/50 group"
